@@ -182,7 +182,7 @@ zllog.ErrorWithRequest(ctx, "api",
 ```go
 import (
     "github.com/zlxdbj/zllog"
-    "go_shield/zltrace"
+    "github.com/zlxdbj/zltrace"
 )
 
 func main() {
@@ -190,7 +190,7 @@ func main() {
     zllog.InitLogger()
 
     // 2. 初始化追踪
-    zltrace.Init()
+    zltrace.InitTracer()
 
     // 3. 日志会自动获取 trace_id
     ctx := context.Background()
