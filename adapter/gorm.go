@@ -124,8 +124,8 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 			zllog.String("source", "gorm"),
 			zllog.Int64("elapsed_ms", elapsed.Milliseconds()))
 	} else {
-		// SQL执行成功，记录信息日志
-		zllog.Info(ctx, "database", msg,
+		// SQL执行成功，记录调试日志
+		zllog.Debug(ctx, "database", msg,
 			zllog.String("source", "gorm"),
 			zllog.Int64("elapsed_ms", elapsed.Milliseconds()))
 	}
