@@ -2,6 +2,7 @@ package zllog
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -330,6 +331,7 @@ func Any(key string, value interface{}) Field {
 // getOrCreateTraceID 获取或创建 trace_id
 // 1. 尝试从 context 获取 trace_id
 // 2. 如果没有，自动生成一个新的 trace_id（用于定时任务、初始化等场景）
+// 3. 生成的 trace_id 符合 W3C Trace Context 标准（32位十六进制字符）
 func getOrCreateTraceID(ctx context.Context) string {
 	// 1. 尝试从 context 获取 trace_id
 	if globalTraceIDProvider != nil {
@@ -338,8 +340,10 @@ func getOrCreateTraceID(ctx context.Context) string {
 		}
 	}
 
-	// 2. 如果没有 trace_id，自动生成一个（不带连字符的 UUID）
-	return strings.Replace(uuid.New().String(), "-", "", -1)
+	// 2. 如果没有 trace_id，自动生成一个符合 W3C 标准的 trace_id
+	// 使用 hex 编码，性能优于 strings.Replace
+	traceID := uuid.New()
+	return hex.EncodeToString(traceID[:])
 }
 
 // ============================================================================
