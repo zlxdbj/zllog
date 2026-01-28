@@ -1,0 +1,638 @@
+package zllog
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+	"github.com/spf13/viper"
+	"gopkg.in/natefinch/lumberjack.v2"
+)
+
+// ============================================================================
+// 中林日志组件（ZLLog）- 基于 Zerolog 的结构化日志
+// 支持复制到其他项目直接使用
+// ============================================================================
+
+var (
+	globalLogger zerolog.Logger
+	onceInit     sync.Once
+	serviceName  string
+	envName      string
+	hostName     string
+
+	// ✅ 全局 TraceID Provider（解耦追踪系统）
+	globalTraceIDProvider TraceIDProvider
+)
+
+// ============================================================================
+// TraceIDProvider 接口 - 解耦日志和追踪系统
+// ============================================================================
+
+// TraceIDProvider 定义 trace_id 提供者接口
+// 任何追踪系统（SkyWalking、Jaeger、OpenTelemetry）都可以实现此接口
+type TraceIDProvider interface {
+	// GetTraceID 从 context 中提取 trace_id
+	// 如果 context 中没有 trace 信息，返回空字符串
+	GetTraceID(ctx context.Context) string
+
+	// Name 返回追踪系统的名称（用于日志记录）
+	Name() string
+}
+
+// RegisterTraceIDProvider 注册 trace_id 提供者
+// 可以在运行时动态注册不同的追踪系统
+func RegisterTraceIDProvider(provider TraceIDProvider) {
+	globalTraceIDProvider = provider
+}
+
+// GetTraceIDProvider 获取当前注册的 trace_id 提供者
+func GetTraceIDProvider() TraceIDProvider {
+	return globalTraceIDProvider
+}
+
+// ============================================================================
+// 日志配置
+// ============================================================================
+
+// LogConfig 日志配置
+type LogConfig struct {
+	// 必须字段
+	ServiceName string // 服务名称
+	Env         string // 环境：dev/test/prod
+	LogLevel    string // 日志级别：DEBUG/INFO/WARN/ERROR/FATAL
+
+	// 日志文件配置
+	LogDir     string // 日志目录
+	MaxSize    int    // 单个日志文件最大大小（MB）
+	MaxBackups int    // 保留的历史日志文件个数
+	MaxAge     int    // 保留历史日志文件的最大天数
+	Compress   bool   // 是否压缩历史日志文件
+
+	// 日期滚动配置
+	EnableDailyRoll bool // 是否启用日期滚动（默认true）
+
+	// 控制台输出配置
+	EnableConsole     bool // 是否输出到控制台（开发环境建议true）
+	ConsoleJSONFormat bool // 控制台是否使用JSON格式（false时使用彩色文本）
+}
+
+// DefaultConfig 返回默认配置（符合等保3最低要求）
+func DefaultConfig(serviceName string) *LogConfig {
+	return &LogConfig{
+		ServiceName:      serviceName,
+		Env:             "dev",
+		LogLevel:        "INFO",
+		LogDir:          "./logs",
+		MaxSize:         100, // 100MB（单个文件最大大小）
+		MaxBackups:      180, // 保留180个历史文件（配合每日切割，可保留180天）
+		MaxAge:          180, // 保留180天（6个月，符合等保3对ERROR日志的最低要求）
+		Compress:        true, // 启用压缩（等保3要求）
+		EnableDailyRoll: true, // 启用日期滚动（每天切割）
+		EnableConsole:   true, // 开发环境默认开启控制台输出
+		ConsoleJSONFormat: false, // 控制台使用彩色文本格式（更友好）
+	}
+}
+
+// ============================================================================
+// 日志系统初始化
+// ============================================================================
+
+// InitLogger 初始化日志系统
+// 自动查找配置文件，按优先级查找：
+//   1. resource/log.yaml（独立配置文件）
+//   2. resource/application.yaml（项目配置文件）
+//   3. resource/application_{ENV}.yaml（环境配置）
+//   4. 默认配置
+func InitLogger() error {
+	return InitLoggerWithConfigDir("resource")
+}
+
+// InitLoggerWithConfigDir 从指定目录初始化日志系统
+func InitLoggerWithConfigDir(configDir string) error {
+	loader := NewConfigLoader()
+	loader.SetConfigDir(configDir)
+	config := loader.LoadConfig()
+	return InitLoggerWithConfig(config)
+}
+
+// InitLoggerWithConfig 使用指定配置初始化日志系统
+// 这是推荐的初始化方式，完全可控
+func InitLoggerWithConfig(config *LogConfig) error {
+	var initErr error
+	onceInit.Do(func() {
+		// 保存全局配置
+		serviceName = config.ServiceName
+		envName = config.Env
+		if h, err := os.Hostname(); err == nil {
+			hostName = h
+		} else {
+			hostName = "unknown"
+		}
+
+		// 解析日志级别
+		level, err := parseLevel(config.LogLevel)
+		if err != nil {
+			initErr = fmt.Errorf("invalid log level: %s", config.LogLevel)
+			return
+		}
+		zerolog.SetGlobalLevel(level)
+
+		// 设置时间格式为纳秒精度（更适合日志分析和高并发场景）
+		zerolog.TimeFieldFormat = time.RFC3339Nano
+
+		// 创建输出writers
+		var writers []io.Writer
+
+		// 文件输出
+		logFile := createLogFileWriter(config)
+		writers = append(writers, logFile)
+
+		// 控制台输出
+		if config.EnableConsole {
+			consoleWriter := createConsoleWriter(config)
+			writers = append(writers, consoleWriter)
+		}
+
+		// 多路输出（文件 + 控制台）
+		multiWriter := zerolog.MultiLevelWriter(writers...)
+
+		// 创建全局logger（添加基础字段）
+		globalLogger = zerolog.New(multiWriter).
+			Level(level).
+			With().
+			Timestamp().
+			Str("service", serviceName).
+			Str("env", config.Env).
+			Str("host", hostName).
+			Logger()
+
+		// 打印初始化成功信息
+		globalLogger.Info().
+			Str("service", serviceName).
+			Str("env", config.Env).
+			Str("level", config.LogLevel).
+			Str("dir", config.LogDir).
+			Send()
+	})
+
+	return initErr
+}
+
+// InitLoggerFromFile 从指定文件初始化日志系统
+// 支持两种格式：
+//   1. log.yaml（直接格式）：service_name, env, level, dir...
+//   2. application.yaml（嵌套格式）：logger.level, logger.dir...
+func InitLoggerFromFile(filename string) error {
+	loader := NewConfigLoader()
+
+	// 判断文件类型
+	if strings.Contains(filename, "log.yaml") {
+		// 独立的 log.yaml
+		v := viper.New()
+		v.SetConfigFile(filename)
+		if err := v.ReadInConfig(); err != nil {
+			return fmt.Errorf("failed to read config file: %w", err)
+		}
+		config := loader.parseLogConfig(v)
+		return InitLoggerWithConfig(config)
+	} else {
+		// application.yaml 或 application_{ENV}.yaml
+		v := viper.New()
+		v.SetConfigFile(filename)
+		if err := v.ReadInConfig(); err != nil {
+			return fmt.Errorf("failed to read config file: %w", err)
+		}
+		config := loader.parseLoggerConfig(v)
+		return InitLoggerWithConfig(config)
+	}
+}
+
+// parseLevel 解析日志级别字符串
+func parseLevel(levelStr string) (zerolog.Level, error) {
+	switch strings.ToUpper(levelStr) {
+	case "DEBUG":
+		return zerolog.DebugLevel, nil
+	case "INFO":
+		return zerolog.InfoLevel, nil
+	case "WARN", "WARNING":
+		return zerolog.WarnLevel, nil
+	case "ERROR":
+		return zerolog.ErrorLevel, nil
+	case "FATAL":
+		return zerolog.FatalLevel, nil
+	default:
+		return zerolog.InfoLevel, fmt.Errorf("unknown log level: %s", levelStr)
+	}
+}
+
+// createLogFileWriter 创建日志文件输出writer
+func createLogFileWriter(config *LogConfig) io.Writer {
+	// 确保日志目录存在
+	os.MkdirAll(config.LogDir, 0755)
+
+	// 日志文件路径
+	logFilePath := filepath.Join(config.LogDir, "app.log")
+
+	// 使用lumberjack进行日志轮转
+	return &lumberjack.Logger{
+		Filename:   logFilePath,
+		MaxSize:    config.MaxSize,    // MB
+		MaxBackups: config.MaxBackups, // 保留历史文件数
+		MaxAge:     config.MaxAge,     // 天数
+		Compress:   config.Compress,   // 压缩
+	}
+}
+
+// createConsoleWriter 创建控制台输出writer
+func createConsoleWriter(config *LogConfig) io.Writer {
+	if config.ConsoleJSONFormat {
+		// JSON格式（适合生产环境日志采集）
+		return os.Stdout
+	}
+
+	// 彩色文本格式（开发环境友好）
+	return zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		NoColor:    false,
+		TimeFormat: "2006-01-02 15:04:05",
+		FormatLevel: func(i interface{}) string {
+			return fmt.Sprintf("[%s]", strings.ToUpper(i.(string)))
+		},
+		FormatMessage: func(i interface{}) string {
+			return fmt.Sprintf("%s", i)
+		},
+	}
+}
+
+// GetGlobalLogger 获取全局logger实例
+func GetGlobalLogger() *zerolog.Logger {
+	return &globalLogger
+}
+
+// GetServiceName 获取服务名称
+func GetServiceName() string {
+	return serviceName
+}
+
+// GetEnvName 获取环境名称
+func GetEnvName() string {
+	return envName
+}
+
+// ============================================================================
+// 结构化日志字段（Zerolog支持）
+// ============================================================================
+
+// Field 日志字段
+type Field struct {
+	Key   string
+	Value interface{}
+}
+
+// String 创建字符串字段
+func String(key, value string) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Int 创建整数字段
+func Int(key string, value int) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Int64 创建int64字段
+func Int64(key string, value int64) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Float 创建浮点数字段
+func Float(key string, value float64) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Bool 创建布尔字段
+func Bool(key string, value bool) Field {
+	return Field{Key: key, Value: value}
+}
+
+// Any 创建任意类型字段
+func Any(key string, value interface{}) Field {
+	return Field{Key: key, Value: value}
+}
+
+// getOrCreateTraceID 获取或创建 trace_id
+// 1. 尝试从 context 获取 trace_id
+// 2. 如果没有，自动生成一个新的 trace_id（用于定时任务、初始化等场景）
+func getOrCreateTraceID(ctx context.Context) string {
+	// 1. 尝试从 context 获取 trace_id
+	if globalTraceIDProvider != nil {
+		if traceID := globalTraceIDProvider.GetTraceID(ctx); traceID != "" {
+			return traceID
+		}
+	}
+
+	// 2. 如果没有 trace_id，自动生成一个（不带连字符的 UUID）
+	return strings.Replace(uuid.New().String(), "-", "", -1)
+}
+
+// ============================================================================
+// 公共日志方法（必须传 Context）
+// ============================================================================
+
+// Debug logs a message at DEBUG level
+func Debug(ctx context.Context, module, message string, fields ...Field) {
+	event := globalLogger.Debug()
+
+	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
+	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+
+	// 添加 module 字段
+	event = event.Str("module", module)
+
+	// 添加自定义字段
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		default:
+			event = event.Interface(field.Key, v)
+		}
+	}
+
+	event.Msg(message)
+}
+
+// Info logs a message at INFO level
+func Info(ctx context.Context, module, message string, fields ...Field) {
+	event := globalLogger.Info()
+
+	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
+	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+
+	// 添加 module 字段
+	event = event.Str("module", module)
+
+	// 添加自定义字段
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		default:
+			event = event.Interface(field.Key, v)
+		}
+	}
+
+	event.Msg(message)
+}
+
+// Warn logs a message at WARN level
+func Warn(ctx context.Context, module, message string, fields ...Field) {
+	event := globalLogger.Warn()
+
+	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
+	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+
+	// 添加 module 字段
+	event = event.Str("module", module)
+
+	// 添加自定义字段
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		default:
+			event = event.Interface(field.Key, v)
+		}
+	}
+
+	event.Msg(message)
+}
+
+// Error logs a message at ERROR level with error info
+func Error(ctx context.Context, module, message string, err error, fields ...Field) {
+	event := globalLogger.Error()
+	if err != nil {
+		event = event.Str("error", err.Error())
+	}
+
+	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
+	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+
+	// 添加 module 字段
+	event = event.Str("module", module)
+
+	// 添加自定义字段
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		default:
+			event = event.Interface(field.Key, v)
+		}
+	}
+
+	event.Msg(message)
+}
+
+// ErrorWithCode logs a message at ERROR level with error code
+func ErrorWithCode(ctx context.Context, module, message, errorCode string, err error, fields ...Field) {
+	event := globalLogger.Error()
+	if err != nil {
+		event = event.Str("error", err.Error())
+	}
+	event = event.Str("error_code", errorCode)
+
+	// 自动从 TraceIDProvider 获取 trace_id
+	if globalTraceIDProvider != nil {
+		if traceID := globalTraceIDProvider.GetTraceID(ctx); traceID != "" {
+			event = event.Str("trace_id", traceID)
+		}
+	}
+
+	// 添加 module 字段
+	event = event.Str("module", module)
+
+	// 添加自定义字段
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		default:
+			event = event.Interface(field.Key, v)
+		}
+	}
+
+	event.Msg(message)
+}
+
+// Fatal logs a message at FATAL level and exits
+func Fatal(ctx context.Context, module, message string, err error, fields ...Field) {
+	event := globalLogger.Fatal()
+	if err != nil {
+		event = event.Str("error", err.Error())
+	}
+
+	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
+	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+
+	// 添加 module 字段
+	event = event.Str("module", module)
+
+	// 添加自定义字段
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		default:
+			event = event.Interface(field.Key, v)
+		}
+	}
+
+	event.Msg(message)
+	os.Exit(1)
+}
+
+// ============================================================================
+// 带请求追踪的日志方法
+// ============================================================================
+
+// InfoWithRequest INFO日志 + request_id + cost_ms
+func InfoWithRequest(ctx context.Context, module, message, requestID string, costMs int64, fields ...Field) {
+	event := globalLogger.Info()
+	if requestID != "" {
+		event = event.Str("request_id", requestID)
+	}
+	if costMs > 0 {
+		event = event.Int64("cost_ms", costMs)
+	}
+
+	// 自动从 TraceIDProvider 获取 trace_id
+	if globalTraceIDProvider != nil {
+		if traceID := globalTraceIDProvider.GetTraceID(ctx); traceID != "" {
+			event = event.Str("trace_id", traceID)
+		}
+	}
+
+	// 添加 module 字段
+	event = event.Str("module", module)
+
+	// 添加自定义字段
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		default:
+			event = event.Interface(field.Key, v)
+		}
+	}
+
+	event.Msg(message)
+}
+
+// ErrorWithRequest ERROR日志 + request_id + cost_ms
+func ErrorWithRequest(ctx context.Context, module, message, requestID string, err error, costMs int64, fields ...Field) {
+	event := globalLogger.Error()
+	if err != nil {
+		event = event.Str("error", err.Error())
+	}
+	if requestID != "" {
+		event = event.Str("request_id", requestID)
+	}
+	if costMs > 0 {
+		event = event.Int64("cost_ms", costMs)
+	}
+
+	// 自动从 TraceIDProvider 获取 trace_id
+	if globalTraceIDProvider != nil {
+		if traceID := globalTraceIDProvider.GetTraceID(ctx); traceID != "" {
+			event = event.Str("trace_id", traceID)
+		}
+	}
+
+	// 添加 module 字段
+	event = event.Str("module", module)
+
+	// 添加自定义字段
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		default:
+			event = event.Interface(field.Key, v)
+		}
+	}
+
+	event.Msg(message)
+}
+
