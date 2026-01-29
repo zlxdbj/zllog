@@ -349,44 +349,8 @@ func GetEnvName() string {
 }
 
 // ============================================================================
-// 结构化日志字段（Zerolog支持）
+// Trace ID 工具函数
 // ============================================================================
-
-// Field 日志字段
-type Field struct {
-	Key   string
-	Value interface{}
-}
-
-// String 创建字符串字段
-func String(key, value string) Field {
-	return Field{Key: key, Value: value}
-}
-
-// Int 创建整数字段
-func Int(key string, value int) Field {
-	return Field{Key: key, Value: value}
-}
-
-// Int64 创建int64字段
-func Int64(key string, value int64) Field {
-	return Field{Key: key, Value: value}
-}
-
-// Float 创建浮点数字段
-func Float(key string, value float64) Field {
-	return Field{Key: key, Value: value}
-}
-
-// Bool 创建布尔字段
-func Bool(key string, value bool) Field {
-	return Field{Key: key, Value: value}
-}
-
-// Any 创建任意类型字段
-func Any(key string, value interface{}) Field {
-	return Field{Key: key, Value: value}
-}
 
 // GetOrCreateTraceID 获取或创建 trace_id
 // 1. 尝试从 context 获取 trace_id

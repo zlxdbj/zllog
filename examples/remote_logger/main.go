@@ -316,7 +316,7 @@ func main() {
 		zllog.String("database", "mydb"))
 
 	zllog.Warn(ctx, "cache", "Cache miss rate increasing",
-		zllog.Float("rate", 0.35))
+		zllog.Float64("rate", 0.35))
 
 	// 模拟一些日志，触发批量发送
 	for i := 0; i < 15; i++ {
