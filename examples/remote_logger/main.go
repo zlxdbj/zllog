@@ -31,6 +31,7 @@ type RemoteLogEntry struct {
 	Level     string                 `json:"level"`
 	Module    string                 `json:"module"`
 	Message   string                 `json:"message"`
+	TraceID   string                 `json:"trace_id,omitempty"`
 	Error     string                 `json:"error,omitempty"`
 	Fields    map[string]interface{} `json:"fields,omitempty"`
 	RequestID string                 `json:"request_id,omitempty"`
@@ -152,11 +153,12 @@ func (l *RemoteLogger) send(entries []RemoteLogEntry) error {
 }
 
 // add 添加日志到缓冲区
-func (l *RemoteLogger) add(entry RemoteLogEntry) {
+func (l *RemoteLogger) add(ctx context.Context, entry RemoteLogEntry) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	entry.Timestamp = time.Now().Format(time.RFC3339Nano)
+	entry.TraceID = zllog.GetOrCreateTraceID(ctx)
 	l.buffer = append(l.buffer, entry)
 
 	// 如果达到批量大小，立即发送
@@ -168,7 +170,7 @@ func (l *RemoteLogger) add(entry RemoteLogEntry) {
 
 // Debug 实现 Logger 接口的 Debug 方法
 func (l *RemoteLogger) Debug(ctx context.Context, module, message string, fields ...zllog.Field) {
-	l.add(RemoteLogEntry{
+	l.add(ctx, RemoteLogEntry{
 		Level:   "DEBUG",
 		Module:  module,
 		Message: message,
@@ -178,7 +180,7 @@ func (l *RemoteLogger) Debug(ctx context.Context, module, message string, fields
 
 // Info 实现 Logger 接口的 Info 方法
 func (l *RemoteLogger) Info(ctx context.Context, module, message string, fields ...zllog.Field) {
-	l.add(RemoteLogEntry{
+	l.add(ctx, RemoteLogEntry{
 		Level:   "INFO",
 		Module:  module,
 		Message: message,
@@ -188,7 +190,7 @@ func (l *RemoteLogger) Info(ctx context.Context, module, message string, fields 
 
 // Warn 实现 Logger 接口的 Warn 方法
 func (l *RemoteLogger) Warn(ctx context.Context, module, message string, fields ...zllog.Field) {
-	l.add(RemoteLogEntry{
+	l.add(ctx, RemoteLogEntry{
 		Level:   "WARN",
 		Module:  module,
 		Message: message,
@@ -207,7 +209,7 @@ func (l *RemoteLogger) Error(ctx context.Context, module, message string, err er
 	if err != nil {
 		entry.Error = err.Error()
 	}
-	l.add(entry)
+	l.add(ctx, entry)
 }
 
 // ErrorWithCode 实现 Logger 接口的 ErrorWithCode 方法
@@ -222,7 +224,7 @@ func (l *RemoteLogger) ErrorWithCode(ctx context.Context, module, message, error
 	if err != nil {
 		entry.Error = err.Error()
 	}
-	l.add(entry)
+	l.add(ctx, entry)
 }
 
 // Fatal 实现 Logger 接口的 Fatal 方法
@@ -236,14 +238,14 @@ func (l *RemoteLogger) Fatal(ctx context.Context, module, message string, err er
 	if err != nil {
 		entry.Error = err.Error()
 	}
-	l.add(entry)
+	l.add(ctx, entry)
 	l.flush() // 立即发送
 	os.Exit(1)
 }
 
 // InfoWithRequest 实现 Logger 接口的 InfoWithRequest 方法
 func (l *RemoteLogger) InfoWithRequest(ctx context.Context, module, message, requestID string, costMs int64, fields ...zllog.Field) {
-	l.add(RemoteLogEntry{
+	l.add(ctx, RemoteLogEntry{
 		Level:     "INFO",
 		Module:    module,
 		Message:   message,
@@ -266,7 +268,7 @@ func (l *RemoteLogger) ErrorWithRequest(ctx context.Context, module, message, re
 	if err != nil {
 		entry.Error = err.Error()
 	}
-	l.add(entry)
+	l.add(ctx, entry)
 }
 
 // fieldsToMap 将字段数组转换为 map

@@ -388,11 +388,11 @@ func Any(key string, value interface{}) Field {
 	return Field{Key: key, Value: value}
 }
 
-// getOrCreateTraceID 获取或创建 trace_id
+// GetOrCreateTraceID 获取或创建 trace_id
 // 1. 尝试从 context 获取 trace_id
 // 2. 如果没有，自动生成一个新的 trace_id（用于定时任务、初始化等场景）
 // 3. 生成的 trace_id 符合 W3C Trace Context 标准（32位十六进制字符）
-func getOrCreateTraceID(ctx context.Context) string {
+func GetOrCreateTraceID(ctx context.Context) string {
 	// 1. 尝试从 context 获取 trace_id
 	if globalTraceIDProvider != nil {
 		if traceID := globalTraceIDProvider.GetTraceID(ctx); traceID != "" {

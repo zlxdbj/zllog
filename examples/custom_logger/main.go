@@ -36,7 +36,8 @@ func (l *CustomLogger) Warn(ctx context.Context, module, message string, fields 
 
 // Error 实现 Logger 接口的 Error 方法
 func (l *CustomLogger) Error(ctx context.Context, module, message string, err error, fields ...zllog.Field) {
-	msg := fmt.Sprintf("[%s] %s: %s", module, message, err)
+	traceID := zllog.GetOrCreateTraceID(ctx)
+	msg := fmt.Sprintf("[%s] %s: %s [trace_id:%s]", module, message, err, traceID)
 	if len(fields) > 0 {
 		msg += " " + formatFields(fields)
 	}
@@ -45,7 +46,8 @@ func (l *CustomLogger) Error(ctx context.Context, module, message string, err er
 
 // ErrorWithCode 实现 Logger 接口的 ErrorWithCode 方法
 func (l *CustomLogger) ErrorWithCode(ctx context.Context, module, message, errorCode string, err error, fields ...zllog.Field) {
-	msg := fmt.Sprintf("[%s] %s [code:%s]: %s", module, message, errorCode, err)
+	traceID := zllog.GetOrCreateTraceID(ctx)
+	msg := fmt.Sprintf("[%s] %s [code:%s]: %s [trace_id:%s]", module, message, errorCode, err, traceID)
 	if len(fields) > 0 {
 		msg += " " + formatFields(fields)
 	}
@@ -54,7 +56,8 @@ func (l *CustomLogger) ErrorWithCode(ctx context.Context, module, message, error
 
 // Fatal 实现 Logger 接口的 Fatal 方法
 func (l *CustomLogger) Fatal(ctx context.Context, module, message string, err error, fields ...zllog.Field) {
-	msg := fmt.Sprintf("[%s] %s: %s", module, message, err)
+	traceID := zllog.GetOrCreateTraceID(ctx)
+	msg := fmt.Sprintf("[%s] %s: %s [trace_id:%s]", module, message, err, traceID)
 	if len(fields) > 0 {
 		msg += " " + formatFields(fields)
 	}
@@ -64,7 +67,8 @@ func (l *CustomLogger) Fatal(ctx context.Context, module, message string, err er
 
 // InfoWithRequest 实现 Logger 接口的 InfoWithRequest 方法
 func (l *CustomLogger) InfoWithRequest(ctx context.Context, module, message, requestID string, costMs int64, fields ...zllog.Field) {
-	msg := fmt.Sprintf("[%s] %s [request:%s] [cost:%dms]", module, message, requestID, costMs)
+	traceID := zllog.GetOrCreateTraceID(ctx)
+	msg := fmt.Sprintf("[%s] %s [request:%s] [cost:%dms] [trace_id:%s]", module, message, requestID, costMs, traceID)
 	if len(fields) > 0 {
 		msg += " " + formatFields(fields)
 	}
@@ -73,7 +77,8 @@ func (l *CustomLogger) InfoWithRequest(ctx context.Context, module, message, req
 
 // ErrorWithRequest 实现 Logger 接口的 ErrorWithRequest 方法
 func (l *CustomLogger) ErrorWithRequest(ctx context.Context, module, message, requestID string, err error, costMs int64, fields ...zllog.Field) {
-	msg := fmt.Sprintf("[%s] %s [request:%s] [cost:%dms]: %s", module, message, requestID, costMs, err)
+	traceID := zllog.GetOrCreateTraceID(ctx)
+	msg := fmt.Sprintf("[%s] %s [request:%s] [cost:%dms]: %s [trace_id:%s]", module, message, requestID, costMs, err, traceID)
 	if len(fields) > 0 {
 		msg += " " + formatFields(fields)
 	}
@@ -82,7 +87,8 @@ func (l *CustomLogger) ErrorWithRequest(ctx context.Context, module, message, re
 
 // log 内部日志方法
 func (l *CustomLogger) log(level string, ctx context.Context, module, message string, fields ...zllog.Field) {
-	msg := fmt.Sprintf("[%s] %s: %s", module, level, message)
+	traceID := zllog.GetOrCreateTraceID(ctx)
+	msg := fmt.Sprintf("[%s] %s: %s [trace_id:%s]", module, level, message, traceID)
 	if len(fields) > 0 {
 		msg += " " + formatFields(fields)
 	}

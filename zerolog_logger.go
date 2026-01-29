@@ -24,7 +24,7 @@ func NewZerologLogger(logger *zerolog.Logger) *ZerologLogger {
 // Debug logs a message at DEBUG level
 func (l *ZerologLogger) Debug(ctx context.Context, module, message string, fields ...Field) {
 	event := l.logger.Debug()
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 
 	// 添加自定义字段
@@ -51,7 +51,7 @@ func (l *ZerologLogger) Debug(ctx context.Context, module, message string, field
 // Info logs a message at INFO level
 func (l *ZerologLogger) Info(ctx context.Context, module, message string, fields ...Field) {
 	event := l.logger.Info()
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 
 	for _, field := range fields {
@@ -77,7 +77,7 @@ func (l *ZerologLogger) Info(ctx context.Context, module, message string, fields
 // Warn logs a message at WARN level
 func (l *ZerologLogger) Warn(ctx context.Context, module, message string, fields ...Field) {
 	event := l.logger.Warn()
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 
 	for _, field := range fields {
@@ -106,7 +106,7 @@ func (l *ZerologLogger) Error(ctx context.Context, module, message string, err e
 	if err != nil {
 		event = event.Str("error", err.Error())
 	}
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 
 	for _, field := range fields {
@@ -136,7 +136,7 @@ func (l *ZerologLogger) ErrorWithCode(ctx context.Context, module, message, erro
 		event = event.Str("error", err.Error())
 	}
 	event = event.Str("error_code", errorCode)
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 
 	for _, field := range fields {
@@ -165,7 +165,7 @@ func (l *ZerologLogger) Fatal(ctx context.Context, module, message string, err e
 	if err != nil {
 		event = event.Str("error", err.Error())
 	}
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 
 	for _, field := range fields {
@@ -198,7 +198,7 @@ func (l *ZerologLogger) InfoWithRequest(ctx context.Context, module, message, re
 	if costMs > 0 {
 		event = event.Int64("cost_ms", costMs)
 	}
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 
 	for _, field := range fields {
@@ -233,7 +233,7 @@ func (l *ZerologLogger) ErrorWithRequest(ctx context.Context, module, message, r
 	if costMs > 0 {
 		event = event.Int64("cost_ms", costMs)
 	}
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 
 	for _, field := range fields {
