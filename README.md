@@ -158,6 +158,40 @@ zllog.Info(ctx, "database",
 )
 ```
 
+### 格式化日志
+
+支持 Printf 风格的格式化日志，方便打印业务数据：
+
+```go
+// 基础格式化
+zllog.Infof(ctx, "api", "User %s logged in from %s", "john", "192.168.1.100")
+
+// Debug 格式化
+zllog.Debugf(ctx, "cache", "Cache hit rate: %.2f%%", 85.67)
+
+// Warn 格式化
+zllog.Warnf(ctx, "api", "Request timeout after %dms", 5000)
+
+// Error 格式化
+zllog.Errorf(ctx, "database", "Query failed: %s", err, "SELECT * FROM users")
+
+// ErrorWithCode 格式化
+zllog.ErrorWithCodef(ctx, "api", "Authentication failed for user %s", "AUTH_001", err, "john")
+
+// Fatal 格式化
+zllog.Fatalf(ctx, "database", "Connection failed: %s", err, "localhost:5432")
+
+// InfoWithRequest 格式化
+zllog.InfoWithRequestf(ctx, "api", "Processed %d items", requestID, costMs, 150)
+
+// ErrorWithRequest 格式化
+zllog.ErrorWithRequestf(ctx, "api", "Failed to process user %s", requestID, err, costMs, "john")
+```
+
+// ErrorWithRequest 格式化
+zllog.ErrorWithRequestf(ctx, "api", "Failed to process user %s", username, requestID, err, costMs)
+```
+
 ### 带请求追踪
 
 ```go
@@ -223,6 +257,19 @@ func main() {
 | `Fatal(ctx, module, message, err, fields...)` | FATAL 级别日志（会退出） |
 | `InfoWithRequest(ctx, module, message, requestID, costMs, fields...)` | 带请求追踪的 INFO |
 | `ErrorWithRequest(ctx, module, message, requestID, err, costMs, fields...)` | 带请求追踪的 ERROR |
+
+### 格式化日志函数
+
+| 函数 | 说明 |
+|------|------|
+| `Debugf(ctx, module, format, args...)` | DEBUG 级别格式化日志 |
+| `Infof(ctx, module, format, args...)` | INFO 级别格式化日志 |
+| `Warnf(ctx, module, format, args...)` | WARN 级别格式化日志 |
+| `Errorf(ctx, module, format, err, args...)` | ERROR 级别格式化日志 |
+| `Fatalf(ctx, module, format, err, args...)` | FATAL 级别格式化日志（会退出） |
+| `ErrorWithCodef(ctx, module, format, errorCode, err, args...)` | 带错误码的格式化日志 |
+| `InfoWithRequestf(ctx, module, format, requestID, costMs, args...)` | 带请求追踪的格式化 INFO |
+| `ErrorWithRequestf(ctx, module, format, requestID, err, costMs, args...)` | 带请求追踪的格式化 ERROR |
 
 ### 字段函数
 
@@ -467,6 +514,39 @@ func (l *CustomLogger) InfoWithRequest(ctx context.Context, module, message, req
 func (l *CustomLogger) ErrorWithRequest(ctx context.Context, module, message, requestID string, err error, costMs int64, fields ...zllog.Field) {
     // 自定义实现
 }
+
+// 格式化日志方法
+func (l *CustomLogger) Debugf(ctx context.Context, module, format string, args []interface{}, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) Infof(ctx context.Context, module, format string, args []interface{}, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) Warnf(ctx context.Context, module, format string, args []interface{}, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) Errorf(ctx context.Context, module, format string, args []interface{}, err error, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) ErrorWithCodef(ctx context.Context, module, format string, args []interface{}, errorCode string, err error, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) Fatalf(ctx context.Context, module, format string, args []interface{}, err error, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) InfoWithRequestf(ctx context.Context, module, format string, args []interface{}, requestID string, costMs int64, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) ErrorWithRequestf(ctx context.Context, module, format string, args []interface{}, requestID string, err error, costMs int64, fields ...zllog.Field) {
+    // 自定义实现
+}
 ```
 
 **步骤2：注册自定义 Logger**
@@ -479,7 +559,7 @@ zllog.SetLogger(&CustomLogger{})
 zllog.Info(ctx, "module", "message")
 ```
 
-**完整示例**：参见 `_examples/custom_logger/main.go`
+**完整示例**：参见 `_examples/formatted_logger/main.go`
 
 ---
 
@@ -500,15 +580,24 @@ zllog.Error(ctx, "app", "Something went wrong", err)
 ### 2. 结构化字段优于字符串拼接
 
 ```go
-// ❌ 不好：字符串拼接
+// ❌ 不好：字符串拼接（无法搜索）
 zllog.Info(ctx, "api", "User "+userID+" logged in from "+ip)
 
-// ✅ 好：结构化字段
+// ✅ 好：结构化字段（可搜索、可分析）
 zllog.Info(ctx, "api", "User logged in",
     zllog.String("user_id", userID),
     zllog.String("ip", ip),
 )
+
+// ✅ 也可以：格式化日志（直观、易读）
+zllog.Infof(ctx, "api", "User %s logged in from %s", userID, ip)
 ```
+
+**使用建议**：
+- **临时调试、简单业务数据** → 使用格式化 `Infof`
+- **生产环境、需要分析** → 使用结构化字段 `Info + Field`
+- **关键错误** → 必须使用结构化字段 `Error + Field`
+- **性能监控** → 使用带请求追踪的 `InfoWithRequest`
 
 ### 3. Context 传递规范
 
@@ -645,6 +734,12 @@ require (
 ---
 
 ## 更新日志
+
+### v1.2.0 (2025-01-29)
+- ✨ **新增格式化日志接口**：支持 Printf 风格的格式化日志
+- ✨ 添加 `Debugf`, `Infof`, `Warnf`, `Errorf`, `Fatalf` 等方法
+- ✨ 添加 `ErrorWithCodef`, `InfoWithRequestf`, `ErrorWithRequestf` 等带参数的格式化方法
+- 📝 完善文档，添加格式化日志使用示例和最佳实践
 
 ### v1.1.0 (2025-01-29)
 - ✨ **新增 Logger 接口**：支持自定义日志实现

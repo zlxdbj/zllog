@@ -92,6 +92,30 @@ type Logger interface {
 
 	// ErrorWithRequest ERROR日志 + request_id + cost_ms
 	ErrorWithRequest(ctx context.Context, module, message, requestID string, err error, costMs int64, fields ...Field)
+
+	// Debugf logs a formatted message at DEBUG level
+	Debugf(ctx context.Context, module, format string, args ...interface{})
+
+	// Infof logs a formatted message at INFO level
+	Infof(ctx context.Context, module, format string, args ...interface{})
+
+	// Warnf logs a formatted message at WARN level
+	Warnf(ctx context.Context, module, format string, args ...interface{})
+
+	// Errorf logs a formatted message at ERROR level with error info
+	Errorf(ctx context.Context, module, format string, err error, args ...interface{})
+
+	// ErrorWithCodef logs a formatted message at ERROR level with error code
+	ErrorWithCodef(ctx context.Context, module, format string, errorCode string, err error, args ...interface{})
+
+	// Fatalf logs a formatted message at FATAL level and exits
+	Fatalf(ctx context.Context, module, format string, err error, args ...interface{})
+
+	// InfoWithRequestf INFO日志 + request_id + cost_ms (formatted)
+	InfoWithRequestf(ctx context.Context, module, format string, requestID string, costMs int64, args ...interface{})
+
+	// ErrorWithRequestf ERROR日志 + request_id + cost_ms (formatted)
+	ErrorWithRequestf(ctx context.Context, module, format string, requestID string, err error, costMs int64, args ...interface{})
 }
 
 // SetLogger 设置自定义 Logger 实现
@@ -425,5 +449,49 @@ func InfoWithRequest(ctx context.Context, module, message, requestID string, cos
 // ErrorWithRequest ERROR日志 + request_id + cost_ms
 func ErrorWithRequest(ctx context.Context, module, message, requestID string, err error, costMs int64, fields ...Field) {
 	getLogger().ErrorWithRequest(ctx, module, message, requestID, err, costMs, fields...)
+}
+
+// ============================================================================
+// 格式化日志方法（支持 Printf 风格的参数替换）
+// ============================================================================
+
+// Debugf logs a formatted message at DEBUG level
+func Debugf(ctx context.Context, module, format string, args ...interface{}) {
+	getLogger().Debugf(ctx, module, format, args...)
+}
+
+// Infof logs a formatted message at INFO level
+func Infof(ctx context.Context, module, format string, args ...interface{}) {
+	getLogger().Infof(ctx, module, format, args...)
+}
+
+// Warnf logs a formatted message at WARN level
+func Warnf(ctx context.Context, module, format string, args ...interface{}) {
+	getLogger().Warnf(ctx, module, format, args...)
+}
+
+// Errorf logs a formatted message at ERROR level with error info
+func Errorf(ctx context.Context, module, format string, err error, args ...interface{}) {
+	getLogger().Errorf(ctx, module, format, err, args...)
+}
+
+// ErrorWithCodef logs a formatted message at ERROR level with error code
+func ErrorWithCodef(ctx context.Context, module, format string, errorCode string, err error, args ...interface{}) {
+	getLogger().ErrorWithCodef(ctx, module, format, errorCode, err, args...)
+}
+
+// Fatalf logs a formatted message at FATAL level and exits
+func Fatalf(ctx context.Context, module, format string, err error, args ...interface{}) {
+	getLogger().Fatalf(ctx, module, format, err, args...)
+}
+
+// InfoWithRequestf INFO日志 + request_id + cost_ms (formatted)
+func InfoWithRequestf(ctx context.Context, module, format string, requestID string, costMs int64, args ...interface{}) {
+	getLogger().InfoWithRequestf(ctx, module, format, requestID, costMs, args...)
+}
+
+// ErrorWithRequestf ERROR日志 + request_id + cost_ms (formatted)
+func ErrorWithRequestf(ctx context.Context, module, format string, requestID string, err error, costMs int64, args ...interface{}) {
+	getLogger().ErrorWithRequestf(ctx, module, format, requestID, err, costMs, args...)
 }
 

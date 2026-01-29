@@ -48,6 +48,48 @@ func (m *MockLogger) ErrorWithRequest(ctx context.Context, module, message, requ
 	m.record("ERROR_REQUEST", module, message)
 }
 
+// 格式化日志方法
+func (m *MockLogger) Debugf(ctx context.Context, module, format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	m.record("DEBUGF", module, message)
+}
+
+func (m *MockLogger) Infof(ctx context.Context, module, format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	m.record("INFOF", module, message)
+}
+
+func (m *MockLogger) Warnf(ctx context.Context, module, format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	m.record("WARNF", module, message)
+}
+
+func (m *MockLogger) Errorf(ctx context.Context, module, format string, err error, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	m.record("ERRORF", module, message)
+}
+
+func (m *MockLogger) ErrorWithCodef(ctx context.Context, module, format string, errorCode string, err error, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	m.record("ERROR_CODEF", module, message)
+}
+
+func (m *MockLogger) Fatalf(ctx context.Context, module, format string, err error, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	m.record("FATALF", module, message)
+	os.Exit(0) // 测试中不真正退出
+}
+
+func (m *MockLogger) InfoWithRequestf(ctx context.Context, module, format string, requestID string, costMs int64, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	m.record("INFO_REQUESTF", module, message)
+}
+
+func (m *MockLogger) ErrorWithRequestf(ctx context.Context, module, format string, requestID string, err error, costMs int64, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	m.record("ERROR_REQUESTF", module, message)
+}
+
 func (m *MockLogger) record(level, module, message string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -146,7 +188,9 @@ func TestSetLogger(t *testing.T) {
 
 	// 验证 GetLogger 返回正确的实现
 	retrieved := GetLogger()
-	if retrieved != mock {
+	// 由于接口比较需要比较实际类型，我们通过调用来验证
+	retrieved.Info(context.Background(), "test", "test message")
+	if mock.getLastCall() != "[INFO] test: test message" {
 		t.Error("GetLogger did not return the set logger")
 	}
 }

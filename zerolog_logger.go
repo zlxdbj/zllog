@@ -2,6 +2,7 @@ package zllog
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -172,5 +173,107 @@ func (l *ZerologLogger) ErrorWithRequest(ctx context.Context, module, message, r
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 	event = l.addFields(event, fields...)
+	event.Msg(message)
+}
+
+// ============================================================================
+// 格式化日志方法实现
+// ============================================================================
+
+// Debugf logs a formatted message at DEBUG level
+func (l *ZerologLogger) Debugf(ctx context.Context, module, format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	event := l.logger.Debug()
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
+	event = event.Str("module", module)
+	event.Msg(message)
+}
+
+// Infof logs a formatted message at INFO level
+func (l *ZerologLogger) Infof(ctx context.Context, module, format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	event := l.logger.Info()
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
+	event = event.Str("module", module)
+	event.Msg(message)
+}
+
+// Warnf logs a formatted message at WARN level
+func (l *ZerologLogger) Warnf(ctx context.Context, module, format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	event := l.logger.Warn()
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
+	event = event.Str("module", module)
+	event.Msg(message)
+}
+
+// Errorf logs a formatted message at ERROR level with error info
+func (l *ZerologLogger) Errorf(ctx context.Context, module, format string, err error, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	event := l.logger.Error()
+	if err != nil {
+		event = event.Err(err)
+	}
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
+	event = event.Str("module", module)
+	event.Msg(message)
+}
+
+// ErrorWithCodef logs a formatted message at ERROR level with error code
+func (l *ZerologLogger) ErrorWithCodef(ctx context.Context, module, format string, errorCode string, err error, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	event := l.logger.Error()
+	if err != nil {
+		event = event.Err(err)
+	}
+	event = event.Str("error_code", errorCode)
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
+	event = event.Str("module", module)
+	event.Msg(message)
+}
+
+// Fatalf logs a formatted message at FATAL level and exits
+func (l *ZerologLogger) Fatalf(ctx context.Context, module, format string, err error, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	event := l.logger.Fatal()
+	if err != nil {
+		event = event.Err(err)
+	}
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
+	event = event.Str("module", module)
+	event.Msg(message)
+	os.Exit(1)
+}
+
+// InfoWithRequestf INFO日志 + request_id + cost_ms (formatted)
+func (l *ZerologLogger) InfoWithRequestf(ctx context.Context, module, format string, requestID string, costMs int64, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	event := l.logger.Info()
+	if requestID != "" {
+		event = event.Str("request_id", requestID)
+	}
+	if costMs > 0 {
+		event = event.Int64("cost_ms", costMs)
+	}
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
+	event = event.Str("module", module)
+	event.Msg(message)
+}
+
+// ErrorWithRequestf ERROR日志 + request_id + cost_ms (formatted)
+func (l *ZerologLogger) ErrorWithRequestf(ctx context.Context, module, format string, requestID string, err error, costMs int64, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	event := l.logger.Error()
+	if err != nil {
+		event = event.Err(err)
+	}
+	if requestID != "" {
+		event = event.Str("request_id", requestID)
+	}
+	if costMs > 0 {
+		event = event.Int64("cost_ms", costMs)
+	}
+	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
+	event = event.Str("module", module)
 	event.Msg(message)
 }
