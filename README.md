@@ -479,7 +479,7 @@ zllog.SetLogger(&CustomLogger{})
 zllog.Info(ctx, "module", "message")
 ```
 
-**完整示例**：参见 `examples/custom_logger_example.go`
+**完整示例**：参见 `_examples/custom_logger/main.go`
 
 ---
 
