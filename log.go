@@ -31,6 +31,9 @@ var (
 
 	// ✅ 全局 TraceID Provider（解耦追踪系统）
 	globalTraceIDProvider TraceIDProvider
+
+	// ✅ 全局 Logger 接口（支持自定义实现）
+	globalLoggerImpl Logger
 )
 
 // ============================================================================
@@ -57,6 +60,60 @@ func RegisterTraceIDProvider(provider TraceIDProvider) {
 // GetTraceIDProvider 获取当前注册的 trace_id 提供者
 func GetTraceIDProvider() TraceIDProvider {
 	return globalTraceIDProvider
+}
+
+// ============================================================================
+// Logger 接口 - 支持自定义日志实现
+// ============================================================================
+
+// Logger 定义日志接口，用户可以实现此接口来使用自定义的日志库
+// 默认提供基于 Zerolog 的实现（ZerologLogger）
+type Logger interface {
+	// Debug logs a message at DEBUG level
+	Debug(ctx context.Context, module, message string, fields ...Field)
+
+	// Info logs a message at INFO level
+	Info(ctx context.Context, module, message string, fields ...Field)
+
+	// Warn logs a message at WARN level
+	Warn(ctx context.Context, module, message string, fields ...Field)
+
+	// Error logs a message at ERROR level with error info
+	Error(ctx context.Context, module, message string, err error, fields ...Field)
+
+	// ErrorWithCode logs a message at ERROR level with error code
+	ErrorWithCode(ctx context.Context, module, message, errorCode string, err error, fields ...Field)
+
+	// Fatal logs a message at FATAL level and exits
+	Fatal(ctx context.Context, module, message string, err error, fields ...Field)
+
+	// InfoWithRequest INFO日志 + request_id + cost_ms
+	InfoWithRequest(ctx context.Context, module, message, requestID string, costMs int64, fields ...Field)
+
+	// ErrorWithRequest ERROR日志 + request_id + cost_ms
+	ErrorWithRequest(ctx context.Context, module, message, requestID string, err error, costMs int64, fields ...Field)
+}
+
+// SetLogger 设置自定义 Logger 实现
+// 允许用户在运行时替换默认的日志实现
+//
+// 用法示例：
+//   // 自定义 Logger 实现
+//   type MyLogger struct {}
+//   func (l *MyLogger) Debug(ctx context.Context, module, message string, fields ...zllog.Field) {
+//       // 自定义实现
+//   }
+//   // ... 实现其他方法
+//
+//   // 注册自定义 Logger
+//   zllog.SetLogger(&MyLogger{})
+func SetLogger(logger Logger) {
+	globalLoggerImpl = logger
+}
+
+// GetLogger 获取当前使用的 Logger 实现
+func GetLogger() Logger {
+	return globalLoggerImpl
 }
 
 // ============================================================================
@@ -174,6 +231,9 @@ func InitLoggerWithConfig(config *LogConfig) error {
 			Str("env", config.Env).
 			Str("host", hostName).
 			Logger()
+
+		// ✅ 创建默认的 ZerologLogger 实现
+		globalLoggerImpl = NewZerologLogger(&globalLogger)
 
 		// 打印初始化成功信息
 		globalLogger.Info().
@@ -350,205 +410,43 @@ func getOrCreateTraceID(ctx context.Context) string {
 // 公共日志方法（必须传 Context）
 // ============================================================================
 
+// getLogger 获取当前 logger 实现（如果未设置则使用默认实现）
+func getLogger() Logger {
+	if globalLoggerImpl == nil {
+		// 如果没有设置自定义实现，使用默认的 ZerologLogger
+		return NewZerologLogger(&globalLogger)
+	}
+	return globalLoggerImpl
+}
+
 // Debug logs a message at DEBUG level
 func Debug(ctx context.Context, module, message string, fields ...Field) {
-	event := globalLogger.Debug()
-
-	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
-
-	// 添加 module 字段
-	event = event.Str("module", module)
-
-	// 添加自定义字段
-	for _, field := range fields {
-		switch v := field.Value.(type) {
-		case string:
-			event = event.Str(field.Key, v)
-		case int:
-			event = event.Int(field.Key, v)
-		case int64:
-			event = event.Int64(field.Key, v)
-		case float64:
-			event = event.Float64(field.Key, v)
-		case bool:
-			event = event.Bool(field.Key, v)
-		default:
-			event = event.Interface(field.Key, v)
-		}
-	}
-
-	event.Msg(message)
+	getLogger().Debug(ctx, module, message, fields...)
 }
 
 // Info logs a message at INFO level
 func Info(ctx context.Context, module, message string, fields ...Field) {
-	event := globalLogger.Info()
-
-	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
-
-	// 添加 module 字段
-	event = event.Str("module", module)
-
-	// 添加自定义字段
-	for _, field := range fields {
-		switch v := field.Value.(type) {
-		case string:
-			event = event.Str(field.Key, v)
-		case int:
-			event = event.Int(field.Key, v)
-		case int64:
-			event = event.Int64(field.Key, v)
-		case float64:
-			event = event.Float64(field.Key, v)
-		case bool:
-			event = event.Bool(field.Key, v)
-		default:
-			event = event.Interface(field.Key, v)
-		}
-	}
-
-	event.Msg(message)
+	getLogger().Info(ctx, module, message, fields...)
 }
 
 // Warn logs a message at WARN level
 func Warn(ctx context.Context, module, message string, fields ...Field) {
-	event := globalLogger.Warn()
-
-	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
-
-	// 添加 module 字段
-	event = event.Str("module", module)
-
-	// 添加自定义字段
-	for _, field := range fields {
-		switch v := field.Value.(type) {
-		case string:
-			event = event.Str(field.Key, v)
-		case int:
-			event = event.Int(field.Key, v)
-		case int64:
-			event = event.Int64(field.Key, v)
-		case float64:
-			event = event.Float64(field.Key, v)
-		case bool:
-			event = event.Bool(field.Key, v)
-		default:
-			event = event.Interface(field.Key, v)
-		}
-	}
-
-	event.Msg(message)
+	getLogger().Warn(ctx, module, message, fields...)
 }
 
 // Error logs a message at ERROR level with error info
 func Error(ctx context.Context, module, message string, err error, fields ...Field) {
-	event := globalLogger.Error()
-	if err != nil {
-		event = event.Str("error", err.Error())
-	}
-
-	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
-
-	// 添加 module 字段
-	event = event.Str("module", module)
-
-	// 添加自定义字段
-	for _, field := range fields {
-		switch v := field.Value.(type) {
-		case string:
-			event = event.Str(field.Key, v)
-		case int:
-			event = event.Int(field.Key, v)
-		case int64:
-			event = event.Int64(field.Key, v)
-		case float64:
-			event = event.Float64(field.Key, v)
-		case bool:
-			event = event.Bool(field.Key, v)
-		default:
-			event = event.Interface(field.Key, v)
-		}
-	}
-
-	event.Msg(message)
+	getLogger().Error(ctx, module, message, err, fields...)
 }
 
 // ErrorWithCode logs a message at ERROR level with error code
 func ErrorWithCode(ctx context.Context, module, message, errorCode string, err error, fields ...Field) {
-	event := globalLogger.Error()
-	if err != nil {
-		event = event.Str("error", err.Error())
-	}
-	event = event.Str("error_code", errorCode)
-
-	// 自动从 TraceIDProvider 获取 trace_id
-	if globalTraceIDProvider != nil {
-		if traceID := globalTraceIDProvider.GetTraceID(ctx); traceID != "" {
-			event = event.Str("trace_id", traceID)
-		}
-	}
-
-	// 添加 module 字段
-	event = event.Str("module", module)
-
-	// 添加自定义字段
-	for _, field := range fields {
-		switch v := field.Value.(type) {
-		case string:
-			event = event.Str(field.Key, v)
-		case int:
-			event = event.Int(field.Key, v)
-		case int64:
-			event = event.Int64(field.Key, v)
-		case float64:
-			event = event.Float64(field.Key, v)
-		case bool:
-			event = event.Bool(field.Key, v)
-		default:
-			event = event.Interface(field.Key, v)
-		}
-	}
-
-	event.Msg(message)
+	getLogger().ErrorWithCode(ctx, module, message, errorCode, err, fields...)
 }
 
 // Fatal logs a message at FATAL level and exits
 func Fatal(ctx context.Context, module, message string, err error, fields ...Field) {
-	event := globalLogger.Fatal()
-	if err != nil {
-		event = event.Str("error", err.Error())
-	}
-
-	// ✅ 自动获取或创建 trace_id（总是有 trace_id）
-	event = event.Str("trace_id", getOrCreateTraceID(ctx))
-
-	// 添加 module 字段
-	event = event.Str("module", module)
-
-	// 添加自定义字段
-	for _, field := range fields {
-		switch v := field.Value.(type) {
-		case string:
-			event = event.Str(field.Key, v)
-		case int:
-			event = event.Int(field.Key, v)
-		case int64:
-			event = event.Int64(field.Key, v)
-		case float64:
-			event = event.Float64(field.Key, v)
-		case bool:
-			event = event.Bool(field.Key, v)
-		default:
-			event = event.Interface(field.Key, v)
-		}
-	}
-
-	event.Msg(message)
-	os.Exit(1)
+	getLogger().Fatal(ctx, module, message, err, fields...)
 }
 
 // ============================================================================
@@ -557,86 +455,11 @@ func Fatal(ctx context.Context, module, message string, err error, fields ...Fie
 
 // InfoWithRequest INFO日志 + request_id + cost_ms
 func InfoWithRequest(ctx context.Context, module, message, requestID string, costMs int64, fields ...Field) {
-	event := globalLogger.Info()
-	if requestID != "" {
-		event = event.Str("request_id", requestID)
-	}
-	if costMs > 0 {
-		event = event.Int64("cost_ms", costMs)
-	}
-
-	// 自动从 TraceIDProvider 获取 trace_id
-	if globalTraceIDProvider != nil {
-		if traceID := globalTraceIDProvider.GetTraceID(ctx); traceID != "" {
-			event = event.Str("trace_id", traceID)
-		}
-	}
-
-	// 添加 module 字段
-	event = event.Str("module", module)
-
-	// 添加自定义字段
-	for _, field := range fields {
-		switch v := field.Value.(type) {
-		case string:
-			event = event.Str(field.Key, v)
-		case int:
-			event = event.Int(field.Key, v)
-		case int64:
-			event = event.Int64(field.Key, v)
-		case float64:
-			event = event.Float64(field.Key, v)
-		case bool:
-			event = event.Bool(field.Key, v)
-		default:
-			event = event.Interface(field.Key, v)
-		}
-	}
-
-	event.Msg(message)
+	getLogger().InfoWithRequest(ctx, module, message, requestID, costMs, fields...)
 }
 
 // ErrorWithRequest ERROR日志 + request_id + cost_ms
 func ErrorWithRequest(ctx context.Context, module, message, requestID string, err error, costMs int64, fields ...Field) {
-	event := globalLogger.Error()
-	if err != nil {
-		event = event.Str("error", err.Error())
-	}
-	if requestID != "" {
-		event = event.Str("request_id", requestID)
-	}
-	if costMs > 0 {
-		event = event.Int64("cost_ms", costMs)
-	}
-
-	// 自动从 TraceIDProvider 获取 trace_id
-	if globalTraceIDProvider != nil {
-		if traceID := globalTraceIDProvider.GetTraceID(ctx); traceID != "" {
-			event = event.Str("trace_id", traceID)
-		}
-	}
-
-	// 添加 module 字段
-	event = event.Str("module", module)
-
-	// 添加自定义字段
-	for _, field := range fields {
-		switch v := field.Value.(type) {
-		case string:
-			event = event.Str(field.Key, v)
-		case int:
-			event = event.Int(field.Key, v)
-		case int64:
-			event = event.Int64(field.Key, v)
-		case float64:
-			event = event.Float64(field.Key, v)
-		case bool:
-			event = event.Bool(field.Key, v)
-		default:
-			event = event.Interface(field.Key, v)
-		}
-	}
-
-	event.Msg(message)
+	getLogger().ErrorWithRequest(ctx, module, message, requestID, err, costMs, fields...)
 }
 

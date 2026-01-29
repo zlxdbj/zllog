@@ -412,18 +412,74 @@ logs/
 ```go
 import (
     "gorm.io/gorm"
-    "github.com/zlxdbj/zllog"
+    "github.com/zlxdbj/zllog/adapter/gormadapter"
 )
 
-// GORM Logger Adapter
-logger := zllog.NewGormLogger()
-
 db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-    Logger: logger,
+    Logger: gormadapter.NewGormLogger(),
 })
 ```
 
-详见 `zllog/gorm_adapter.go`
+详见 `adapter/gormadapter/gorm.go`
+
+### Q6: 如何实现自定义 Logger？
+
+zllog 支持通过接口自定义日志实现，适用于以下场景：
+- 将日志发送到远程日志服务（如 ELK、Loki）
+- 使用其他日志库（如 logrus、zap）
+- 实现特殊的日志格式或存储方式
+
+**步骤1：实现 Logger 接口**
+
+```go
+import "github.com/zlxdbj/zllog"
+
+type CustomLogger struct{}
+
+func (l *CustomLogger) Debug(ctx context.Context, module, message string, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) Info(ctx context.Context, module, message string, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) Warn(ctx context.Context, module, message string, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) Error(ctx context.Context, module, message string, err error, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) ErrorWithCode(ctx context.Context, module, message, errorCode string, err error, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) Fatal(ctx context.Context, module, message string, err error, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) InfoWithRequest(ctx context.Context, module, message, requestID string, costMs int64, fields ...zllog.Field) {
+    // 自定义实现
+}
+
+func (l *CustomLogger) ErrorWithRequest(ctx context.Context, module, message, requestID string, err error, costMs int64, fields ...zllog.Field) {
+    // 自定义实现
+}
+```
+
+**步骤2：注册自定义 Logger**
+
+```go
+// 注册自定义 Logger（会替换默认的 Zerolog 实现）
+zllog.SetLogger(&CustomLogger{})
+
+// 所有日志调用都会使用自定义实现
+zllog.Info(ctx, "module", "message")
+```
+
+**完整示例**：参见 `examples/custom_logger_example.go`
 
 ---
 
@@ -589,6 +645,14 @@ require (
 ---
 
 ## 更新日志
+
+### v1.1.0 (2025-01-29)
+- ✨ **新增 Logger 接口**：支持自定义日志实现
+- ✨ 提供基于 Zerolog 的默认实现（ZerologLogger）
+- ✨ 新增 `SetLogger()` 和 `GetLogger()` 方法
+- ✨ 添加自定义 Logger 示例代码
+- 🔄 重构：将 adapter/gorm.go 移至 adapter/gormadapter/gorm.go
+- 📝 完善文档，添加接口使用指南
 
 ### v1.0.0 (2025-01-28)
 - ✅ 完全独立，移除对项目特定代码的依赖

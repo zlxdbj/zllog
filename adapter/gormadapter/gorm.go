@@ -1,4 +1,4 @@
-package adapter
+package gormadapter
 
 import (
 	"context"
@@ -17,10 +17,10 @@ import (
 // GormLogger GORM Logger 适配器，将 SQL 查询日志输出到 zllog
 //
 // 用法示例：
-//   import "go_shield/zllog/adapter"
+//   import "github.com/zlxdbj/zllog/adapter/gormadapter"
 //
 //   db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-//       Logger: adapter.NewGormLogger(),
+//       Logger: gormadapter.NewGormLogger(),
 //   })
 //
 // 特性：
