@@ -22,6 +22,7 @@ func main() {
 		EnableDailyRoll: true,
 		EnableConsole:   true,
 		ConsoleJSONFormat: false, // 控制台使用彩色文本
+		EnableCaller:    true,    // 启用调用位置信息
 	}
 
 	if err := zllog.InitLoggerWithConfig(config); err != nil {

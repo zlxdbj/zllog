@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -15,12 +17,59 @@ import (
 
 // ZerologLogger 基于 Zerolog 的 Logger 接口实现
 type ZerologLogger struct {
-	logger *zerolog.Logger
+	logger        *zerolog.Logger
+	enableCaller  bool
 }
 
 // NewZerologLogger 创建 Zerolog Logger 实例
 func NewZerologLogger(logger *zerolog.Logger) *ZerologLogger {
-	return &ZerologLogger{logger: logger}
+	return &ZerologLogger{
+		logger:       logger,
+		enableCaller: true, // 默认启用 caller，后续可通过配置控制
+	}
+}
+
+// getCaller 获取调用者位置信息（跳过库内部的调用帧）
+// 返回格式：filename:line
+func getCaller() string {
+	// 尝试不同的调用栈深度
+	for skip := 3; skip <= 6; skip++ {
+		pc, file, line, ok := runtime.Caller(skip)
+		if !ok {
+			continue
+		}
+
+		// 通过 pc 获取函数名
+		fn := runtime.FuncForPC(pc)
+		if fn == nil {
+			continue
+		}
+
+		// 跳过 zllog 包内部的调用
+		funcName := fn.Name()
+		// 如果函数名包含 "zllog."，说明还在库内部，继续查找
+		if contains(funcName, "zllog.") {
+			continue
+		}
+
+		// 获取文件名（不包含完整路径）
+		shortFile := file
+		for i := len(file) - 1; i > 0; i-- {
+			if file[i] == '/' || file[i] == '\\' {
+				shortFile = file[i+1:]
+				break
+			}
+		}
+
+		return fmt.Sprintf("%s:%d", shortFile, line)
+	}
+
+	return "unknown:0"
+}
+
+// contains 检查字符串是否包含子串
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
 
 // addFields 将自定义字段添加到日志事件
@@ -81,6 +130,9 @@ func (l *ZerologLogger) addFields(event *zerolog.Event, fields ...Field) *zerolo
 // Debug logs a message at DEBUG level
 func (l *ZerologLogger) Debug(ctx context.Context, module, message string, fields ...Field) {
 	event := l.logger.Debug()
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 	event = l.addFields(event, fields...)
@@ -90,6 +142,9 @@ func (l *ZerologLogger) Debug(ctx context.Context, module, message string, field
 // Info logs a message at INFO level
 func (l *ZerologLogger) Info(ctx context.Context, module, message string, fields ...Field) {
 	event := l.logger.Info()
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 	event = l.addFields(event, fields...)
@@ -99,6 +154,9 @@ func (l *ZerologLogger) Info(ctx context.Context, module, message string, fields
 // Warn logs a message at WARN level
 func (l *ZerologLogger) Warn(ctx context.Context, module, message string, fields ...Field) {
 	event := l.logger.Warn()
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 	event = l.addFields(event, fields...)
@@ -110,6 +168,9 @@ func (l *ZerologLogger) Error(ctx context.Context, module, message string, err e
 	event := l.logger.Error()
 	if err != nil {
 		event = event.Err(err)
+	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
 	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
@@ -123,6 +184,9 @@ func (l *ZerologLogger) ErrorWithCode(ctx context.Context, module, message, erro
 	if err != nil {
 		event = event.Err(err)
 	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("error_code", errorCode)
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
@@ -135,6 +199,9 @@ func (l *ZerologLogger) Fatal(ctx context.Context, module, message string, err e
 	event := l.logger.Fatal()
 	if err != nil {
 		event = event.Err(err)
+	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
 	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
@@ -151,6 +218,9 @@ func (l *ZerologLogger) InfoWithRequest(ctx context.Context, module, message, re
 	}
 	if costMs > 0 {
 		event = event.Int64("cost_ms", costMs)
+	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
 	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
@@ -170,6 +240,9 @@ func (l *ZerologLogger) ErrorWithRequest(ctx context.Context, module, message, r
 	if costMs > 0 {
 		event = event.Int64("cost_ms", costMs)
 	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 	event = l.addFields(event, fields...)
@@ -184,6 +257,9 @@ func (l *ZerologLogger) ErrorWithRequest(ctx context.Context, module, message, r
 func (l *ZerologLogger) Debugf(ctx context.Context, module, format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	event := l.logger.Debug()
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 	event.Msg(message)
@@ -193,6 +269,9 @@ func (l *ZerologLogger) Debugf(ctx context.Context, module, format string, args 
 func (l *ZerologLogger) Infof(ctx context.Context, module, format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	event := l.logger.Info()
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 	event.Msg(message)
@@ -202,6 +281,9 @@ func (l *ZerologLogger) Infof(ctx context.Context, module, format string, args .
 func (l *ZerologLogger) Warnf(ctx context.Context, module, format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	event := l.logger.Warn()
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
 	event.Msg(message)
@@ -213,6 +295,9 @@ func (l *ZerologLogger) Errorf(ctx context.Context, module, format string, err e
 	event := l.logger.Error()
 	if err != nil {
 		event = event.Err(err)
+	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
 	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
@@ -226,6 +311,9 @@ func (l *ZerologLogger) ErrorWithCodef(ctx context.Context, module, format strin
 	if err != nil {
 		event = event.Err(err)
 	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
+	}
 	event = event.Str("error_code", errorCode)
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
@@ -238,6 +326,9 @@ func (l *ZerologLogger) Fatalf(ctx context.Context, module, format string, err e
 	event := l.logger.Fatal()
 	if err != nil {
 		event = event.Err(err)
+	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
 	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
@@ -254,6 +345,9 @@ func (l *ZerologLogger) InfoWithRequestf(ctx context.Context, module, format str
 	}
 	if costMs > 0 {
 		event = event.Int64("cost_ms", costMs)
+	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
 	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)
@@ -272,6 +366,9 @@ func (l *ZerologLogger) ErrorWithRequestf(ctx context.Context, module, format st
 	}
 	if costMs > 0 {
 		event = event.Int64("cost_ms", costMs)
+	}
+	if l.enableCaller {
+		event = event.Str("caller", getCaller())
 	}
 	event = event.Str("trace_id", GetOrCreateTraceID(ctx))
 	event = event.Str("module", module)

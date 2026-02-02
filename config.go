@@ -165,6 +165,9 @@ func (l *ConfigLoader) parseLogConfig(v *viper.Viper) *LogConfig {
 	if v.IsSet("console_json") {
 		config.ConsoleJSONFormat = v.GetBool("console_json")
 	}
+	if v.IsSet("enable_caller") {
+		config.EnableCaller = v.GetBool("enable_caller")
+	}
 
 	// 根据环境调整配置
 	adjustConfigByEnv(config)
@@ -214,6 +217,9 @@ func (l *ConfigLoader) parseLoggerConfig(v *viper.Viper) *LogConfig {
 	}
 	if v.IsSet("logger.console_json") {
 		config.ConsoleJSONFormat = v.GetBool("logger.console_json")
+	}
+	if v.IsSet("logger.enable_caller") {
+		config.EnableCaller = v.GetBool("logger.enable_caller")
 	}
 
 	// 根据环境调整配置

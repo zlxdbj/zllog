@@ -164,6 +164,9 @@ type LogConfig struct {
 	// 控制台输出配置
 	EnableConsole     bool // 是否输出到控制台（开发环境建议true）
 	ConsoleJSONFormat bool // 控制台是否使用JSON格式（false时使用彩色文本）
+
+	// 调用位置信息配置
+	EnableCaller bool // 是否记录调用位置（文件名和行号）
 }
 
 // DefaultConfig 返回默认配置（符合等保3最低要求）
@@ -180,6 +183,7 @@ func DefaultConfig(serviceName string) *LogConfig {
 		EnableDailyRoll: true, // 启用日期滚动（每天切割）
 		EnableConsole:   true, // 开发环境默认开启控制台输出
 		ConsoleJSONFormat: false, // 控制台使用彩色文本格式（更友好）
+		EnableCaller:    true, // 默认启用调用位置记录
 	}
 }
 
@@ -230,6 +234,14 @@ func InitLoggerWithConfig(config *LogConfig) error {
 		// 设置时间格式为纳秒精度（更适合日志分析和高并发场景）
 		zerolog.TimeFieldFormat = time.RFC3339Nano
 
+		// 配置调用位置信息的格式（只显示文件名和行号，不显示完整路径）
+		// 注意：我们不在 logger 初始化时启用 Caller()，因为 Zerolog 会捕获到库内部的位置
+		// 而是在 ZerologLogger 的方法中手动通过 getCaller() 获取用户代码的位置
+		zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
+			shortFile := filepath.Base(file)
+			return fmt.Sprintf("%s:%d", shortFile, line)
+		}
+
 		// 创建输出writers
 		var writers []io.Writer
 
@@ -247,10 +259,16 @@ func InitLoggerWithConfig(config *LogConfig) error {
 		multiWriter := zerolog.MultiLevelWriter(writers...)
 
 		// 创建全局logger（添加基础字段）
-		globalLogger = zerolog.New(multiWriter).
+		loggerBuilder := zerolog.New(multiWriter).
 			Level(level).
 			With().
-			Timestamp().
+			Timestamp()
+
+		// 注意：我们不在 logger 初始化时启用 Caller()，因为 Zerolog 会捕获到库内部的位置
+		// 而是在 ZerologLogger 的方法中手动通过 getCaller() 获取用户代码的位置
+		// config.EnableCaller 配置项用于控制是否启用这个功能（在 ZerologLogger 中检查）
+
+		globalLogger = loggerBuilder.
 			Str("service", serviceName).
 			Str("env", config.Env).
 			Str("host", hostName).
